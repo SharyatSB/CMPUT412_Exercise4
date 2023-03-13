@@ -1,7 +1,7 @@
 # parameters
 ARG REPO_NAME="LAB_4"
-ARG DESCRIPTION="StartCode"
-ARG MAINTAINER="Zepeng Xiao"
+ARG DESCRIPTION="This is the repo for the follower code"
+ARG MAINTAINER="Sharyat Singh Bhanwala (Sharyat Singh Bhanwala)"
 # pick an icon from: https://fontawesome.com/v4.7.0/icons/
 ARG ICON="cube"
 
