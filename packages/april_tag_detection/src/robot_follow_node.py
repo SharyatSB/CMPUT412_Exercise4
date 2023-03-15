@@ -75,7 +75,7 @@ class LaneFollowNode(DTROS):
 
         # Detection variables
         self.vehicle_distance = 1
-        self.detecting = False
+        self.detecting = True
         self.gray = None
         self.tagID = 999
         self.x = 360
@@ -132,8 +132,9 @@ class LaneFollowNode(DTROS):
         self.detecting = msg.data
 
     def centers_callback(self, msg):
-        self.x = msg.data.corners[10].x
-        print(self.x)
+        if(len(msg.corners) > 10):
+            self.x = msg.corners[10].x
+        # print(self.x)
 
     def april_tag_detector(self):
         self.gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -145,54 +146,109 @@ class LaneFollowNode(DTROS):
 
         for r in results:
             self.tagID = r.tag_id
+            (ptA, ptB, ptC, ptD) = r.corners
+            self.l = ptB - ptA
+            print(self.l)
+
 
 
     def drive(self):
+        # if self.x == 360:
+        #     self.twist.omega = 0
+        # else:
+        #     # P Term
+        #     P = -self.x * self.P
+
+        #     # D Term
+        #     d_error = (self.x - self.last_error) / (rospy.get_time() - self.last_time)
+        #     self.last_error = self.x
+        #     self.last_time = rospy.get_time()
+        #     D = d_error * self.D
+
+        #     self.twist.v = self.velocity
+        #     self.twist.omega = P + D
+        #     if DEBUG:
+        #         self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
+
+        # self.vel_pub.publish(self.twist)
         
-        print(self.tagID)
-        if (self.tagID == 153):
-            self.twist.v = 0
-            self.twist.omega = 0
-            self.vel_pub.publish(self.twist)
-            rospy.sleep(0.7)
-            print("stopping because of april tag")
-            self.tagID = 999
-            
-        print("Restarting again")
-        if self.detecting == True:  
-            # print("True")
-            if self.vehicle_distance < 0.48:
-                print("Stopping because less distance")
+        # print("Restarting again")
+
+        # Going straight
+        # print(self.tagID)
+        print(self.detecting)
+
+        if (self.tagID == 153) or (self.tagID == 133) or (self.tagID == 58) or (self.tagID == 62) or (self.tagID == 133) or (self.tagID == 162):
+            if self.l[0] > 45:
                 self.twist.v = 0
                 self.twist.omega = 0
+                self.vel_pub.publish(self.twist)
+                rospy.sleep(0.7)
+                print("stopping because of april tag")
+                self.tagID = 999
+                print(self.vehicle_distance)
 
-            elif self.proportional is None:
+        if self.detecting == True:  
+                print("I am detecting")
+                if self.vehicle_distance < 0.45:
+                    # print("Stopping because less distance")
+                    self.twist.v = 0
+                    self.twist.omega = 0
+                    self.vel_pub.publish(self.twist)
+
+                elif self.vehicle_distance >= 0.45:
+                    print(self.x)
+                    if( 260 < self.x < 380):
+                        print("going straight")
+
+                        if self.proportional is None:
+                            self.twist.omega = 0
+
+                        else:
+                            # P Term
+                            # print("Moving when True")
+                            P = -self.proportional * self.P
+
+                            # D Term
+                            d_error = (self.proportional - self.last_error) / (rospy.get_time() - self.last_time)
+                            self.last_error = self.proportional
+                            self.last_time = rospy.get_time()
+                            D = d_error * self.D
+
+                            self.twist.v = self.velocity
+                            self.twist.omega = P + D
+                            if DEBUG:
+                                self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
+                        
+
+
+                    # Going left
+                    elif (self.x < 260):
+                        print("turning left")
+                        self.twist.v = 0.3
+                        self.twist.omega = 3
+                        self.vel_pub.publish(self.twist)
+                        rospy.sleep(0.5)
+
+                    # Going right
+                    elif( self.x > 380):
+                        print("turning right")
+                        self.twist.v = 0.3
+                        self.twist.omega = -3
+                        self.vel_pub.publish(self.twist)
+                        rospy.sleep(0.5)
+
+
+                self.vel_pub.publish(self.twist)
+
+        else:
+            print("Using lane following")
+            if self.proportional is None:
                 self.twist.omega = 0
 
             else:
                 # P Term
-                print("Moving when True")
-                P = -self.proportional * self.P
-
-                # D Term
-                d_error = (self.proportional - self.last_error) / (rospy.get_time() - self.last_time)
-                self.last_error = self.proportional
-                self.last_time = rospy.get_time()
-                D = d_error * self.D
-
-                self.twist.v = self.velocity
-                self.twist.omega = P + D
-                if DEBUG:
-                    self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
-        
-        else:
-            # print("False")
-            if self.proportional is None:
-                 self.twist.omega = 0
-
-            else:
-                # P Term
-                print("Moving when False")
+                # print("Moving when True")
                 P = -self.proportional * self.P
 
                 # D Term
@@ -206,7 +262,78 @@ class LaneFollowNode(DTROS):
                 if DEBUG:
                     self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
 
-        self.vel_pub.publish(self.twist)
+                    rospy.sleep(0.5)
+
+            self.vel_pub.publish(self.twist)
+
+        # if ( 250 < self.x < 400):
+        #     print("going straight")
+        #     if self.detecting == True:  
+        #         print("I am detecting")
+        #         if self.vehicle_distance < 0.60:
+        #             print("Stopping because less distance")
+        #             self.twist.v = 0
+        #             self.twist.omega = 0
+
+        #         elif self.proportional is None:
+        #             self.twist.omega = 0
+
+        #         else:
+        #             # P Term
+        #             # print("Moving when True")
+        #             P = -self.proportional * self.P
+
+        #             # D Term
+        #             d_error = (self.proportional - self.last_error) / (rospy.get_time() - self.last_time)
+        #             self.last_error = self.proportional
+        #             self.last_time = rospy.get_time()
+        #             D = d_error * self.D
+
+        #             self.twist.v = self.velocity
+        #             self.twist.omega = P + D
+        #             if DEBUG:
+        #                 self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
+            
+        #     else:
+        #         # print("False")
+        #         if self.proportional is None:
+        #             self.twist.omega = 0
+
+        #         else:
+        #             # P Term
+        #             print("Moving when False")
+        #             P = -self.proportional * self.P
+
+        #             # D Term
+        #             d_error = (self.proportional - self.last_error) / (rospy.get_time() - self.last_time)
+        #             self.last_error = self.proportional
+        #             self.last_time = rospy.get_time()
+        #             D = d_error * self.D
+
+        #             self.twist.v = self.velocity
+        #             self.twist.omega = P + D
+        #             if DEBUG:
+        #                 self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
+
+        #     self.vel_pub.publish(self.twist)
+
+        # # Going left
+        # elif( self.x < 250):
+        #     print("turning left")
+        #     self.twist.v = 0.3
+        #     self.twist.omega = 3
+        #     self.vel_pub.publish(self.twist)
+        #     rospy.sleep(1)
+
+        # # Going right
+        # elif( self.x > 400):
+        #     print("turning right")
+        #     self.twist.v = 0.3
+        #     self.twist.omega = -2.5
+        #     self.vel_pub.publish(self.twist)
+        #     rospy.sleep(0.5)
+
+
 
         # self.prev_distance = self.vehicle_distance
 
