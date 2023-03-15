@@ -2,11 +2,13 @@
 
 import rospy
 from april_tag import april_tags
+import cv2
+from cv_bridge import CvBridge
+import apriltag
 from duckietown.dtros import DTROS, NodeType
 from sensor_msgs.msg import CameraInfo, CompressedImage
 from std_msgs.msg import Float32
 from turbojpeg import TurboJPEG
-import cv2
 import numpy as np
 from duckietown_msgs.msg import WheelsCmdStamped, Twist2DStamped
 from duckietown_msgs.msg import BoolStamped, VehicleCorners
@@ -44,6 +46,14 @@ class LaneFollowNode(DTROS):
                                          self.detection_callback, 
                                          queue_size=1)
         
+        self.image_sub = rospy.Subscriber("/csc22919/camera_node/image/compressed", 
+                                          CompressedImage, 
+                                          self.image_callback)
+        
+        self.center_sub = rospy.Subscriber("/csc22919/duckiebot_detection_node/centers",
+                                           VehicleCorners,
+                                           self.centers_callback,
+                                           queue_size=1)
 
         self.jpeg = TurboJPEG()
 
@@ -62,8 +72,13 @@ class LaneFollowNode(DTROS):
         self.D = -0.004
         self.last_error = 0
         self.last_time = rospy.get_time()
+
+        # Detection variables
         self.vehicle_distance = 1
         self.detecting = False
+        self.gray = None
+        self.tagID = 999
+        self.x = 360
         # Shutdown hook
         rospy.on_shutdown(self.hook)
 
@@ -105,18 +120,49 @@ class LaneFollowNode(DTROS):
             rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop))
             self.pub.publish(rect_img_msg)
 
+    def image_callback(self, msg):
+        self.br = CvBridge()
+        self.image = self.br.compressed_imgmsg_to_cv2(msg, "bgr8")
+        self.detect = self.april_tag_detector()
+        
     def distance_callback(self, msg):
         self.vehicle_distance = msg.data
 
     def detection_callback(self, msg):
         self.detecting = msg.data
 
-    def drive(self):
+    def centers_callback(self, msg):
+        self.x = msg.data.corners[10].x
+        print(self.x)
 
+    def april_tag_detector(self):
+        self.gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        # print("[INFO] detecting AprilTags...")
+        options = apriltag.DetectorOptions(families="tag36h11")
+        detector = apriltag.Detector(options)
+        results = detector.detect(self.gray)
+        # print("[INFO] {} total AprilTags detected".format(len(results)))
+
+        for r in results:
+            self.tagID = r.tag_id
+
+
+    def drive(self):
+        
+        print(self.tagID)
+        if (self.tagID == 153):
+            self.twist.v = 0
+            self.twist.omega = 0
+            self.vel_pub.publish(self.twist)
+            rospy.sleep(0.7)
+            print("stopping because of april tag")
+            self.tagID = 999
+            
+        print("Restarting again")
         if self.detecting == True:  
-            print("True")
-            if self.vehicle_distance < 0.3:
-                print("Stopping")
+            # print("True")
+            if self.vehicle_distance < 0.48:
+                print("Stopping because less distance")
                 self.twist.v = 0
                 self.twist.omega = 0
 
@@ -140,7 +186,7 @@ class LaneFollowNode(DTROS):
                     self.loginfo(self.proportional, P, D, self.twist.omega, self.twist.v)
         
         else:
-            print("False")
+            # print("False")
             if self.proportional is None:
                  self.twist.omega = 0
 
@@ -176,7 +222,6 @@ class LaneFollowNode(DTROS):
 if __name__ == "__main__":
     node = LaneFollowNode("lanefollow_node")
     rate = rospy.Rate(8)  # 8hz
-    # ap = april_tags()
     while not rospy.is_shutdown():
         node.drive()
         rate.sleep()
